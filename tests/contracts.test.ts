@@ -3,9 +3,11 @@ import test from "node:test";
 import {
   analyzeRequestSchema,
   createIssueRequestSchema,
+  type DemoAnalyzeRequest,
 } from "../src/schemas/analysis";
 import { issueSchema } from "../src/schemas/issue";
 import { submissionRequestSchema } from "../src/schemas/submission";
+import { uploadRequestSchema } from "../src/schemas/upload";
 import { analyzeDemoIssue } from "../src/lib/demo/analyze";
 import { createDemoRepository } from "../src/lib/demo/repository";
 import { seedIssues } from "../src/lib/demo/fixtures";
@@ -15,7 +17,7 @@ const input = analyzeRequestSchema.parse({
   mode: "demo",
   demoIssueType: "pothole",
   location: { lat: 37.394, lng: -122.081 },
-});
+}) as DemoAnalyzeRequest;
 
 test("fixtures conform and never contain a fictional government receipt", () => {
   assert.equal(issueSchema.array().parse(seedIssues).length, 3);
@@ -46,6 +48,28 @@ test("coordinates and explicit demo boundaries reject invalid inputs", () => {
   }
   assert.equal(
     analyzeRequestSchema.safeParse({ ...input, mode: "live" }).success,
+    false,
+  );
+  assert.equal(
+    analyzeRequestSchema.safeParse({
+      mode: "live",
+      storagePath: "pending/example.jpg",
+      location: input.location,
+    }).success,
+    true,
+  );
+  assert.equal(
+    uploadRequestSchema.safeParse({
+      contentType: "image/jpeg",
+      sizeBytes: 12,
+    }).success,
+    true,
+  );
+  assert.equal(
+    uploadRequestSchema.safeParse({
+      contentType: "application/pdf",
+      sizeBytes: 12,
+    }).success,
     false,
   );
   assert.equal(

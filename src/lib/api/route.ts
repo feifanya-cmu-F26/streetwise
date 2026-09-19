@@ -22,9 +22,13 @@ export async function readJson<T>(
   return schema.parse(body);
 }
 
-export function demoResponse<T>(data: T, status = 200) {
+export function demoResponse<T>(
+  data: T,
+  status = 200,
+  mode: "demo" | "live" = "demo",
+) {
   return Response.json(
-    { data, meta: { mode: "demo" } },
+    { data, meta: { mode } },
     { status, headers: { "Cache-Control": "no-store" } },
   );
 }

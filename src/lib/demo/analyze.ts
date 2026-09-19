@@ -1,7 +1,10 @@
-import { issueAnalysisSchema, type AnalyzeRequest } from "@/schemas/analysis";
+import {
+  issueAnalysisSchema,
+  type DemoAnalyzeRequest,
+} from "@/schemas/analysis";
 import { issueTypeLabels } from "@/lib/issues/labels";
 
-export function analyzeDemoIssue(input: AnalyzeRequest) {
+export function analyzeDemoIssue(input: DemoAnalyzeRequest) {
   const label = issueTypeLabels[input.demoIssueType];
   const description = `Sample ${label.toLowerCase()} report for reviewing the Streetwise workflow. No image analysis has been performed.`;
   return issueAnalysisSchema.parse({

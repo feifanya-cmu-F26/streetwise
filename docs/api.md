@@ -6,10 +6,13 @@ All current endpoints operate in demo mode. JSON requests use `Content-Type: app
 | ------------------------------ | ------------------------------------------------------ | ------------------- |
 | `GET /api/issues`              | None                                                   | `Issue[]`           |
 | `GET /api/issues/:id`          | UUID path parameter                                    | `Issue`             |
+| `POST /api/issues/upload`      | `UploadRequest`                                        | `UploadResponse`    |
 | `POST /api/issues/analyze`     | `AnalyzeRequest`                                       | `IssueAnalysis`     |
 | `POST /api/issues`             | `{ analysis: IssueAnalysis, report: GeneratedReport }` | `Issue`, status 201 |
 | `POST /api/issues/:id/confirm` | `{ kind: "still_there" \| "resolved" }`                | Updated `Issue`     |
 | `POST /api/issues/:id/submit`  | `{ mode: "demo", reviewed: true }`                     | `SubmissionResult`  |
+
+`meta.mode` in the response envelope is `"demo"` or `"live"` depending on which path served the request; it is not tied to a single global flag.
 
 ## Analyze sample
 
@@ -25,7 +28,30 @@ All current endpoints operate in demo mode. JSON requests use `Content-Type: app
 }
 ```
 
-This endpoint does not accept a photo or perform real AI analysis. A live upload contract must be coordinated before replacing this behavior. Category options are `pothole`, `street_light`, `trash`, `sidewalk`, and `water_leak`.
+This endpoint does not accept a photo or perform real AI analysis. Category options are `pothole`, `street_light`, `trash`, `sidewalk`, and `water_leak`.
+
+## Live upload (contract only, not yet processed)
+
+`POST /api/issues/upload` requests a signed Storage upload slot ahead of analysis:
+
+```json
+{ "contentType": "image/jpeg", "sizeBytes": 812345 }
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "storagePath": "pending/<uuid>.jpg",
+    "uploadUrl": "https://...supabase.co/storage/v1/...",
+    "token": "..."
+  },
+  "meta": { "mode": "live" }
+}
+```
+
+The client PUTs the file to `uploadUrl`, then calls `POST /api/issues/analyze` with `{ "mode": "live", "storagePath": "...", "location": {...} }`. That request validates today, but `analyzeIssue` currently rejects it with a 501 `LIVE_ANALYSIS_NOT_IMPLEMENTED` error — vision analysis, geocoding, duplicate detection, and authority resolution are not wired up yet (`docs/agents/report-pipeline.AGENTS.md` Next work #2-4). `sizeBytes` is capped at 10 MB; accepted types are `image/jpeg`, `image/png`, `image/webp`. Requires `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `SUPABASE_STORAGE_BUCKET`; without them the upload endpoint returns 503 `SERVICE_NOT_CONFIGURED`. The underlying table/bucket migration is a draft pending review (`supabase/migrations/0001_init.sql`).
 
 ## Review and creation
 
@@ -58,7 +84,9 @@ Repeating preparation does not create an issue or change stored government statu
 - 404: issue missing in the current process (including after a restart).
 - 409: positive duplicate decision on creation.
 - 415: request is not JSON.
-- 503: `STREETWISE_MODE` is not `demo`.
+- 501: `LIVE_ANALYSIS_NOT_IMPLEMENTED` — the live analyze request shape is valid but not processed yet.
+- 502: `STORAGE_SIGN_FAILED` — Supabase Storage rejected the signed upload URL request.
+- 503: `STREETWISE_MODE` is not `demo` (demo-only routes), or `SERVICE_NOT_CONFIGURED` (missing Supabase env vars on live routes).
 - 500: unexpected internal failure; no internal exception details are returned to the client.
 
 Authoritative definitions: `src/schemas/`. Do not copy independent client interfaces from this document.

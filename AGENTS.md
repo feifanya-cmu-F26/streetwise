@@ -24,3 +24,13 @@ Read `GOAL.md`, `docs/architecture.md`, and your role document under `docs/agent
 | Product / Submission / Integration | `src/app/` page composition, `src/components/report/`, `src/lib/submission/`, submit API, root configuration and shared UI primitives           | `docs/agents/integration.AGENTS.md`     |
 
 `src/lib/demo/`, environment declarations, fixtures, and API documentation require coordination when another lane consumes them. Role guides supplement this file; do not replace the root instructions per branch.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

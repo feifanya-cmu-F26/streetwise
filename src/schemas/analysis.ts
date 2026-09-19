@@ -7,14 +7,26 @@ import {
   severitySchema,
 } from "./issue";
 
-// Demo input is intentionally explicit. Live upload/analysis gets its own contract later.
-export const analyzeRequestSchema = z
+// Demo input stays explicit and mock. Live input references an evidence photo
+// already placed in Storage by the /api/issues/upload flow (src/schemas/upload.ts).
+const demoAnalyzeRequestSchema = z
   .object({
     mode: z.literal("demo"),
     demoIssueType: issueTypeSchema,
     location: locationSchema,
   })
   .strict();
+const liveAnalyzeRequestSchema = z
+  .object({
+    mode: z.literal("live"),
+    storagePath: z.string().min(1),
+    location: locationSchema,
+  })
+  .strict();
+export const analyzeRequestSchema = z.discriminatedUnion("mode", [
+  demoAnalyzeRequestSchema,
+  liveAnalyzeRequestSchema,
+]);
 export const duplicateSchema = z.discriminatedUnion("isDuplicate", [
   z.object({
     isDuplicate: z.literal(false),
@@ -28,7 +40,7 @@ export const duplicateSchema = z.discriminatedUnion("isDuplicate", [
   }),
 ]);
 export const issueAnalysisSchema = z.object({
-  mode: z.literal("demo"),
+  mode: z.enum(["demo", "live"]),
   issueType: issueTypeSchema,
   severity: severitySchema,
   description: z.string().min(1).max(4000),
@@ -55,5 +67,6 @@ export const createIssueRequestSchema = z
     }
   });
 export type AnalyzeRequest = z.infer<typeof analyzeRequestSchema>;
+export type DemoAnalyzeRequest = z.infer<typeof demoAnalyzeRequestSchema>;
 export type IssueAnalysis = z.infer<typeof issueAnalysisSchema>;
 export type CreateIssueRequest = z.infer<typeof createIssueRequestSchema>;

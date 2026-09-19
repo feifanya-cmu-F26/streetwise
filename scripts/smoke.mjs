@@ -94,6 +94,35 @@ const badType = await fetch(`${base}/api/issues/analyze`, {
 });
 assert.equal(badType.status, 415);
 checks++;
+// Live upload: 200 with real signed-URL data if this machine has Supabase
+// env vars configured, otherwise 503. Both are valid depending on the runner.
+const uploadResponse = await fetch(`${base}/api/issues/upload`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ contentType: "image/jpeg", sizeBytes: 12345 }),
+});
+const uploadBody = await uploadResponse.json();
+assert.ok(
+  [200, 503].includes(uploadResponse.status),
+  JSON.stringify(uploadBody),
+);
+if (uploadResponse.status === 200) {
+  assert.equal(uploadBody.meta.mode, "live");
+  assert.ok(uploadBody.data.storagePath.startsWith("pending/"));
+  assert.ok(uploadBody.data.uploadUrl.startsWith("https://"));
+} else {
+  assert.equal(uploadBody.error.code, "SERVICE_NOT_CONFIGURED");
+}
+checks++;
+await request(`/api/issues/upload`, 400, {
+  contentType: "application/pdf",
+  sizeBytes: 12345,
+});
+await request(`/api/issues/analyze`, 501, {
+  mode: "live",
+  storagePath: "pending/example.jpg",
+  location: input.location,
+});
 console.log(
   `Passed ${checks} HTTP checks: demo flow, community isolation, validation, missing issues, and submission boundary.`,
 );
