@@ -2,12 +2,21 @@ import { z } from "zod";
 import { authorityResolutionSchema } from "./authority";
 import { submissionSchema } from "./submission";
 
+// `other` is load-bearing, not a leftover bin: without it a real problem that
+// happens to fall outside this list gets refused as "not a street problem",
+// which is both wrong and indistinguishable from a genuinely unusable photo.
+// Keep in sync with the CHECK constraint in supabase/migrations/0001_init.sql.
 export const issueTypeSchema = z.enum([
   "pothole",
   "street_light",
   "trash",
   "sidewalk",
   "water_leak",
+  "graffiti",
+  "abandoned_vehicle",
+  "traffic_sign",
+  "vegetation",
+  "other",
 ]);
 export const severitySchema = z.enum(["low", "medium", "high"]);
 export const issueStatusSchema = z.enum([

@@ -14,8 +14,12 @@ create extension if not exists pgcrypto;
 
 create table if not exists issues (
   id uuid primary key default gen_random_uuid(),
+  -- Keep in sync with issueTypeSchema in src/schemas/issue.ts.
   type text not null check (
-    type in ('pothole', 'street_light', 'trash', 'sidewalk', 'water_leak')
+    type in (
+      'pothole', 'street_light', 'trash', 'sidewalk', 'water_leak',
+      'graffiti', 'abandoned_vehicle', 'traffic_sign', 'vegetation', 'other'
+    )
   ),
   severity text not null check (severity in ('low', 'medium', 'high')),
   lat double precision not null check (lat between -90 and 90),

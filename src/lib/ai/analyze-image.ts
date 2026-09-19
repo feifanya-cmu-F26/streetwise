@@ -38,7 +38,9 @@ Describe only what is visible in the image. Specifically, never state or estimat
 
 Choose severity from what the image shows about risk to people passing by, and say in the description what made you choose it.
 
-Set usable to false, fill unusableReason, and leave every other field null when the photo does not show one of the listed categories, is too dark or blurred to judge, or shows a person as its subject. A photo that is merely imperfect is still usable; say what is uncertain in the description instead.
+Use the issueType that fits best. When the photo does show a genuine problem in a public space but none of the specific categories describes it, choose "other" and name the actual problem in the title and description. Never refuse a real problem for lack of a matching category.
+
+Set usable to false, fill unusableReason, and leave every other field null only when there is nothing to report: the photo shows no problem at all, is too dark or blurred to judge, or has a person as its subject. A photo that is merely imperfect is still usable; say what is uncertain in the description instead.
 
 When usable is true, write reportTitle as a short specific line naming the problem and where it appears in the scene, and reportDescription as a factual paragraph a city worker could act on. Do not address anyone by name, do not promise a response time, and do not claim the report has been filed.`;
 
