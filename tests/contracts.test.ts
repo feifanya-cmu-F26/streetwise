@@ -13,6 +13,11 @@ import {
   issueFromRow,
   type IssueRow,
 } from "../src/lib/issues/mapping";
+import {
+  boundingBoxDeltas,
+  haversineMeters,
+  rankCandidates,
+} from "../src/lib/issues/distance";
 import { prepareDemoSubmission } from "../src/lib/submission/demo";
 
 const input = analyzeRequestSchema.parse({
@@ -133,6 +138,34 @@ test("creation uses reviewed text and never persists a government receipt", () =
   assert.equal(insert.authority_id, null);
   assert.equal(insert.status, "ready");
   assert.ok(!("submission" in insert));
+});
+
+test("candidate ranking measures real distance and stays within its radius", () => {
+  const here = { lat: 37.394, lng: -122.081 };
+  // 0.001 degrees of latitude is ~111 m anywhere on earth.
+  assert.equal(
+    Math.round(haversineMeters(here, { ...here, lat: here.lat + 0.001 })),
+    111,
+  );
+  assert.equal(Math.round(haversineMeters(here, here)), 0);
+  const ranked = rankCandidates(here, [
+    { id: "b", report_title: "far", lat: here.lat + 0.0009, lng: here.lng, status: "ready" },
+    { id: "a", report_title: "near", lat: here.lat + 0.0002, lng: here.lng, status: "detected" },
+    { id: "c", report_title: "outside", lat: here.lat + 0.01, lng: here.lng, status: "ready" },
+  ]);
+  assert.deepEqual(
+    ranked.map((c) => c.issueId),
+    ["a", "b"],
+  );
+  assert.ok(ranked[0].distanceMeters < ranked[1].distanceMeters);
+  // A candidate is never a decision, so nothing here carries a confidence.
+  assert.ok(!("isDuplicate" in ranked[0]));
+});
+
+test("a near-polar report widens the prefilter instead of dividing by zero", () => {
+  const { latDelta, lngDelta } = boundingBoxDeltas(89.9999);
+  assert.ok(Number.isFinite(lngDelta));
+  assert.ok(lngDelta > latDelta);
 });
 
 test("demo preparation is repeatable and never mutates submission state", () => {

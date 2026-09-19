@@ -35,7 +35,9 @@ JSON requests use `Content-Type: application/json`. Successful responses are `{ 
 
 This endpoint does not accept a photo or perform real AI analysis. Category options are `pothole`, `street_light`, `trash`, `sidewalk`, and `water_leak`.
 
-## Live upload (contract only, not yet processed)
+`duplicateCandidates` is the one part of the response that is real even in demo mode: nearby unresolved reports of the same type, within 120 m, nearest first, at most five. It is deliberately separate from `duplicate`. Candidates are a prompt for the reviewer; `duplicate` is a decision, and proximity alone never sets it, so `isDuplicate` stays `false` until something can actually establish that two reports describe one problem.
+
+## Live upload and analysis
 
 `POST /api/issues/upload` requests a signed Storage upload slot ahead of analysis:
 
@@ -56,7 +58,11 @@ Response:
 }
 ```
 
-The client PUTs the file to `uploadUrl`, then calls `POST /api/issues/analyze` with `{ "mode": "live", "storagePath": "...", "location": {...} }`. That request validates today, but `analyzeIssue` currently rejects it with a 501 `LIVE_ANALYSIS_NOT_IMPLEMENTED` error — vision analysis, geocoding, duplicate detection, and authority resolution are not wired up yet (`docs/agents/report-pipeline.AGENTS.md` Next work #2-4). Requires `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `SUPABASE_STORAGE_BUCKET`; without them the upload endpoint returns 503 `SERVICE_NOT_CONFIGURED`. The underlying table/bucket migration is a draft pending review (`supabase/migrations/0001_init.sql`).
+The client PUTs the file to `uploadUrl`, then calls `POST /api/issues/analyze` with `{ "mode": "live", "storagePath": "...", "location": {...} }`, which reads the photo, classifies it with a multimodal model, and writes the generated report. `storagePath` is checked against the evidence table before the model is reached, so a forged path costs nothing. The photo is not consumed by analysis: a failed run leaves the slot unclaimed and retryable. Requires `AI_GATEWAY_API_KEY` on top of the Supabase variables. The underlying table/bucket migration is a draft pending review (`supabase/migrations/0001_init.sql`).
+
+What the model is and is not allowed to produce is set in `src/lib/ai/analyze-image.ts`: it describes only what the photo shows, and is instructed not to estimate measurements without a reference object in frame, not to claim how long a problem has existed, and not to name a responsible agency. It can refuse — a photo that shows no reportable problem, is too dark or blurred to judge, or has a person as its subject comes back as 422 `PHOTO_NOT_USABLE` rather than being forced into a category. `needsReview` is always `true`; a person reviews every generated report before it is filed.
+
+`authority` is always `needs_review` on live analysis. Jurisdiction is deliberately never inferred from an address or a photo, and `resolveAuthority` has no boundary data yet.
 
 Requesting a slot also inserts an `evidence` row, so every issued path is tracked before a file exists at it.
 
@@ -100,8 +106,8 @@ Repeating preparation does not create an issue or change stored government statu
 - 404: issue missing in the database.
 - 409: positive duplicate decision on creation.
 - 415: request is not JSON.
-- 501: `LIVE_ANALYSIS_NOT_IMPLEMENTED` — the live analyze request shape is valid but not processed yet.
-- 502: `DATABASE_ERROR`, `STORAGE_SIGN_FAILED`, `EVIDENCE_RECORD_FAILED`, or `EVIDENCE_PROMOTE_FAILED` — Supabase rejected a query, the signed upload URL request, the evidence insert, or the move out of `pending/`.
+- 422: `PHOTO_NOT_USABLE` — the photo does not show a reportable problem clearly enough to analyze.
+- 502: `DATABASE_ERROR`, `STORAGE_SIGN_FAILED`, `EVIDENCE_RECORD_FAILED`, `EVIDENCE_PROMOTE_FAILED`, `EVIDENCE_UNREADABLE`, `ANALYSIS_FAILED`, or `ANALYSIS_INCOMPLETE` — Supabase rejected a query, the signed URL request, the evidence insert or move, or the model call failed or answered with missing fields. Analysis never degrades to invented output.
 - 503: `STREETWISE_MODE` is not `demo` (analysis and submission), or `SERVICE_NOT_CONFIGURED` (missing Supabase env vars, which every issue endpoint needs).
 - 500: unexpected internal failure; no internal exception details are returned to the client.
 

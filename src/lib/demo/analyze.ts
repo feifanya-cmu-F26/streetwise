@@ -16,6 +16,8 @@ export function analyzeDemoIssue(input: DemoAnalyzeRequest) {
     imagePath: null,
     imageUrl: null,
     duplicate: { isDuplicate: false, existingIssueId: null, confidence: 0 },
+    // Filled in by the orchestrator, which is what can reach the database.
+    duplicateCandidates: [],
     authority: {
       status: "needs_review",
       authority: null,

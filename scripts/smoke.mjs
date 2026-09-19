@@ -37,19 +37,24 @@ async function request(
 const live = (path, expected, body, method) =>
   request(path, expected, body, method, "live");
 
+const issuedPaths = [];
 async function cleanup() {
   const { SUPABASE_URL, SUPABASE_SECRET_KEY } = process.env;
-  if (!SUPABASE_URL || !SUPABASE_SECRET_KEY || createdIds.length === 0) return;
-  await fetch(
-    `${SUPABASE_URL}/rest/v1/issues?id=in.(${createdIds.join(",")})`,
-    {
-      method: "DELETE",
-      headers: {
-        apikey: SUPABASE_SECRET_KEY,
-        Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
-      },
-    },
-  );
+  if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) return;
+  const headers = {
+    apikey: SUPABASE_SECRET_KEY,
+    Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
+  };
+  const remove = (query) =>
+    fetch(`${SUPABASE_URL}/rest/v1/${query}`, { method: "DELETE", headers });
+  if (createdIds.length > 0) {
+    await remove(`issues?id=in.(${createdIds.join(",")})`);
+  }
+  // Slots this run asked for but never uploaded to. Nothing sweeps these yet,
+  // so without this every run leaves one behind.
+  for (const path of issuedPaths) {
+    await remove(`evidence?storage_path=eq.${encodeURIComponent(path)}`);
+  }
 }
 
 const issues = await live("/api/issues");
@@ -61,6 +66,14 @@ const input = {
   location: { lat: 37.394, lng: -122.081 },
 };
 const analysis = await request("/api/issues/analyze", 200, input);
+// Candidates are a prompt for the reviewer, never a decision.
+assert.ok(Array.isArray(analysis.duplicateCandidates));
+assert.equal(analysis.duplicate.isDuplicate, false);
+for (const candidate of analysis.duplicateCandidates) {
+  assert.ok(candidate.distanceMeters <= 120);
+  assert.notEqual(candidate.status, "resolved");
+}
+checks++;
 // Everything below acts on this issue rather than on existing rows, so a run
 // never mutates data someone else is looking at.
 const created = await live("/api/issues", 201, {
@@ -130,13 +143,16 @@ const slot = await live("/api/issues/upload", 200, {
 });
 assert.ok(slot.storagePath.startsWith("pending/"));
 assert.ok(slot.uploadUrl.startsWith("https://"));
+issuedPaths.push(slot.storagePath);
 await request("/api/issues/upload", 400, {
   contentType: "application/pdf",
   sizeBytes: 12345,
 });
-await request("/api/issues/analyze", 501, {
+// Live analysis is real and costs a model call, so this only checks that the
+// ownership guard rejects a forged path before any model is reached.
+await request("/api/issues/analyze", 400, {
   mode: "live",
-  storagePath: "pending/example.jpg",
+  storagePath: "pending/never-issued-by-this-server.jpg",
   location: input.location,
 });
 // A path the server never issued cannot be attached to a new issue.
