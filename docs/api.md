@@ -51,7 +51,15 @@ Response:
 }
 ```
 
-The client PUTs the file to `uploadUrl`, then calls `POST /api/issues/analyze` with `{ "mode": "live", "storagePath": "...", "location": {...} }`. That request validates today, but `analyzeIssue` currently rejects it with a 501 `LIVE_ANALYSIS_NOT_IMPLEMENTED` error — vision analysis, geocoding, duplicate detection, and authority resolution are not wired up yet (`docs/agents/report-pipeline.AGENTS.md` Next work #2-4). `sizeBytes` is capped at 10 MB; accepted types are `image/jpeg`, `image/png`, `image/webp`. Requires `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `SUPABASE_STORAGE_BUCKET`; without them the upload endpoint returns 503 `SERVICE_NOT_CONFIGURED`. The underlying table/bucket migration is a draft pending review (`supabase/migrations/0001_init.sql`).
+The client PUTs the file to `uploadUrl`, then calls `POST /api/issues/analyze` with `{ "mode": "live", "storagePath": "...", "location": {...} }`. That request validates today, but `analyzeIssue` currently rejects it with a 501 `LIVE_ANALYSIS_NOT_IMPLEMENTED` error — vision analysis, geocoding, duplicate detection, and authority resolution are not wired up yet (`docs/agents/report-pipeline.AGENTS.md` Next work #2-4). Requires `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `SUPABASE_STORAGE_BUCKET`; without them the upload endpoint returns 503 `SERVICE_NOT_CONFIGURED`. The underlying table/bucket migration is a draft pending review (`supabase/migrations/0001_init.sql`).
+
+Requesting a slot also inserts an `evidence` row, so every issued path is tracked before a file exists at it.
+
+Agreed rules behind this contract:
+
+- **Validation.** `sizeBytes` and `contentType` in the request are client claims used for early rejection only. The bucket's `file_size_limit` (10 MB) and `allowed_mime_types` (`image/jpeg`, `image/png`, `image/webp`) are the enforcement a client cannot bypass.
+- **Path lifecycle.** Issued paths start under `pending/`. Analysis is responsible for promoting a path once it belongs to a real issue; unpromoted `pending/` objects are garbage and may be swept. Nothing promotes or sweeps them yet.
+- **Reads.** The bucket is private and `issues.image_path` stores a Storage path, not a link. `Issue.imageUrl` in API responses is a signed read URL generated at read time, so it is short-lived and must not be persisted by clients. Generating it is part of the persistence work, so `imageUrl` is still always `null` today.
 
 ## Review and creation
 
@@ -85,7 +93,7 @@ Repeating preparation does not create an issue or change stored government statu
 - 409: positive duplicate decision on creation.
 - 415: request is not JSON.
 - 501: `LIVE_ANALYSIS_NOT_IMPLEMENTED` — the live analyze request shape is valid but not processed yet.
-- 502: `STORAGE_SIGN_FAILED` — Supabase Storage rejected the signed upload URL request.
+- 502: `STORAGE_SIGN_FAILED` or `EVIDENCE_RECORD_FAILED` — Supabase rejected the signed upload URL request or the evidence insert.
 - 503: `STREETWISE_MODE` is not `demo` (demo-only routes), or `SERVICE_NOT_CONFIGURED` (missing Supabase env vars on live routes).
 - 500: unexpected internal failure; no internal exception details are returned to the client.
 

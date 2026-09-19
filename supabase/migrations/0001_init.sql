@@ -21,7 +21,11 @@ create table if not exists issues (
   lat double precision not null check (lat between -90 and 90),
   lng double precision not null check (lng between -180 and 180),
   address text,
-  image_url text,
+  -- Storage path, not a URL: the bucket is private, so issueSchema.imageUrl is
+  -- produced by signing this path at read time. Storing a signed URL would
+  -- persist a link that expires. Denormalized from `evidence` to keep the
+  -- list/detail read path free of a join.
+  image_path text,
   report_title text not null,
   report_description text not null,
   authority_status text not null check (
@@ -104,9 +108,18 @@ alter table submissions enable row level security;
 -- No policies are added: only the service-role server client may read/write
 -- until a real access model (e.g. authenticated report owners) is designed.
 
-insert into storage.buckets (id, name, public)
-values ('issue-evidence', 'issue-evidence', false)
-on conflict (id) do nothing;
 -- Bucket is private. Uploads go through signed upload URLs issued by
--- src/lib/supabase/storage.ts; reads should go through signed read URLs or a
--- server route rather than making the bucket public.
+-- src/lib/supabase/storage.ts; reads go through signed read URLs generated
+-- from issues.image_path rather than making the bucket public.
+-- file_size_limit and allowed_mime_types are the only enforcement that a
+-- client cannot bypass: the request body's sizeBytes/contentType are claims.
+-- Keep file_size_limit in sync with MAX_UPLOAD_BYTES in src/schemas/upload.ts.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'issue-evidence', 'issue-evidence', false, 10485760,
+  array['image/jpeg', 'image/png', 'image/webp']
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;

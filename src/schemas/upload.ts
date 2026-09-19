@@ -8,6 +8,8 @@ export const acceptedImageTypeSchema = z.enum([
   "image/png",
   "image/webp",
 ]);
+// Mirrors the bucket's file_size_limit in supabase/migrations/0001_init.sql,
+// which is the enforcement a client cannot bypass. Keep both in sync.
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 export const uploadRequestSchema = z
   .object({
@@ -20,6 +22,5 @@ export const uploadResponseSchema = z.object({
   uploadUrl: z.url(),
   token: z.string().min(1),
 });
-export type AcceptedImageType = z.infer<typeof acceptedImageTypeSchema>;
 export type UploadRequest = z.infer<typeof uploadRequestSchema>;
 export type UploadResponse = z.infer<typeof uploadResponseSchema>;
