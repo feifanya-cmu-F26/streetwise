@@ -1,18 +1,26 @@
 import assert from "node:assert/strict";
 
-// Run against a local demo server only. This creates one in-memory sample issue.
+// Run against a local server only. Persistence is Supabase-backed now, so this
+// writes real rows and deletes the ones it created before exiting.
 const base = process.env.STREETWISE_TEST_URL || "http://localhost:3000";
 const url = new URL(base);
 assert.ok(
   ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname),
   "Smoke checks must target a local server.",
 );
+try {
+  process.loadEnvFile(".env.local");
+} catch {
+  // Falls back to whatever is already exported; the checks below report it.
+}
 let checks = 0;
+const createdIds = [];
 async function request(
   path,
   expected = 200,
   body,
   method = body === undefined ? "GET" : "POST",
+  mode = "demo",
 ) {
   const response = await fetch(`${base}${path}`, {
     method,
@@ -21,38 +29,71 @@ async function request(
   });
   const data = await response.json();
   assert.equal(response.status, expected, JSON.stringify(data));
-  if (expected < 400) assert.equal(data.meta.mode, "demo");
+  if (expected < 400) assert.equal(data.meta.mode, mode);
   else assert.equal(typeof data.error.code, "string");
   checks++;
   return data.data;
 }
+const live = (path, expected, body, method) =>
+  request(path, expected, body, method, "live");
 
-const issues = await request("/api/issues");
+const issuedPaths = [];
+async function cleanup() {
+  const { SUPABASE_URL, SUPABASE_SECRET_KEY } = process.env;
+  if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) return;
+  const headers = {
+    apikey: SUPABASE_SECRET_KEY,
+    Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
+  };
+  const remove = (query) =>
+    fetch(`${SUPABASE_URL}/rest/v1/${query}`, { method: "DELETE", headers });
+  if (createdIds.length > 0) {
+    await remove(`issues?id=in.(${createdIds.join(",")})`);
+  }
+  // Slots this run asked for but never uploaded to. Nothing sweeps these yet,
+  // so without this every run leaves one behind.
+  for (const path of issuedPaths) {
+    await remove(`evidence?storage_path=eq.${encodeURIComponent(path)}`);
+  }
+}
+
+const issues = await live("/api/issues");
 assert.ok(issues.length >= 3);
 const first = issues[0];
-const confirmed = await request(`/api/issues/${first.id}/confirm`, 200, {
-  kind: "resolved",
-});
-assert.equal(confirmed.community.resolved, first.community.resolved + 1);
-assert.deepEqual(confirmed.submission, first.submission);
-assert.equal(confirmed.status, first.status);
 const input = {
   mode: "demo",
   demoIssueType: "pothole",
   location: { lat: 37.394, lng: -122.081 },
 };
 const analysis = await request("/api/issues/analyze", 200, input);
-const created = await request("/api/issues", 201, {
+// Candidates are a prompt for the reviewer, never a decision.
+assert.ok(Array.isArray(analysis.duplicateCandidates));
+assert.equal(analysis.duplicate.isDuplicate, false);
+for (const candidate of analysis.duplicateCandidates) {
+  assert.ok(candidate.distanceMeters <= 120);
+  assert.notEqual(candidate.status, "resolved");
+}
+checks++;
+// Everything below acts on this issue rather than on existing rows, so a run
+// never mutates data someone else is looking at.
+const created = await live("/api/issues", 201, {
   analysis,
   report: { ...analysis.generatedReport, title: "HTTP smoke sample" },
 });
+createdIds.push(created.id);
+const confirmed = await live(`/api/issues/${created.id}/confirm`, 200, {
+  kind: "resolved",
+});
+assert.equal(confirmed.community.resolved, created.community.resolved + 1);
+assert.deepEqual(confirmed.submission, created.submission);
+assert.equal(confirmed.status, created.status);
 const submitted = await request(`/api/issues/${created.id}/submit`, 200, {
   mode: "demo",
   reviewed: true,
 });
 assert.equal(submitted.submittedToGovernment, false);
 assert.equal(submitted.status, "prepared");
-const stored = await request(`/api/issues/${created.id}`);
+const stored = await live(`/api/issues/${created.id}`);
 assert.equal(stored.submission.status, "not_submitted");
 await request(`/api/issues/${created.id}/submit`, 400, {
   mode: "demo",
@@ -94,6 +135,32 @@ const badType = await fetch(`${base}/api/issues/analyze`, {
 });
 assert.equal(badType.status, 415);
 checks++;
+// Reaching this point means Supabase is configured: the first check would
+// have failed with 503 otherwise, since persistence has no fallback.
+const slot = await live("/api/issues/upload", 200, {
+  contentType: "image/jpeg",
+  sizeBytes: 12345,
+});
+assert.ok(slot.storagePath.startsWith("pending/"));
+assert.ok(slot.uploadUrl.startsWith("https://"));
+issuedPaths.push(slot.storagePath);
+await request("/api/issues/upload", 400, {
+  contentType: "application/pdf",
+  sizeBytes: 12345,
+});
+// Live analysis is real and costs a model call, so this only checks that the
+// ownership guard rejects a forged path before any model is reached.
+await request("/api/issues/analyze", 400, {
+  mode: "live",
+  storagePath: "pending/never-issued-by-this-server.jpg",
+  location: input.location,
+});
+// A path the server never issued cannot be attached to a new issue.
+await request("/api/issues", 400, {
+  analysis: { ...analysis, imagePath: "pending/not-issued-by-this-server.jpg" },
+  report: analysis.generatedReport,
+});
+await cleanup();
 console.log(
-  `Passed ${checks} HTTP checks: demo flow, community isolation, validation, missing issues, and submission boundary.`,
+  `Passed ${checks} HTTP checks: live persistence, community isolation, validation, missing issues, evidence ownership, and submission boundary.`,
 );

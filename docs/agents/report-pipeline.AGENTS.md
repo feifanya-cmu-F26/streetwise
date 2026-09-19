@@ -33,8 +33,8 @@ Use `feat/report-pipeline`. Ship small PRs with stable contracts. Run `pnpm chec
 
 ## Next work
 
-1. Agree real upload and analysis contracts; add a reviewed Supabase migration and Storage policies.
-2. Implement persistence and atomic observations behind the repository boundary.
-3. Connect image analysis, reverse geocoding, authority rules, and report generation.
-4. Add duplicate candidate lookup; use PostGIS if straightforward, otherwise Haversine.
+1. ~~Agree real upload and analysis contracts; add a Supabase migration and Storage policies.~~ Done in code and verified against a disposable project; the migration still needs integration-lead review.
+2. ~~Implement persistence and atomic observations behind the repository boundary.~~ Done: Supabase is the only implementation, observations insert and a trigger keeps the counters atomic.
+3. Image analysis, reverse geocoding, and report generation are connected; `mode: "live"` runs the real pipeline. **Authority rules are not**, and cannot be until someone loads official jurisdiction boundary data — a city name or an address does not establish maintenance responsibility, so `resolveAuthority` stays unimplemented and live analysis returns `needs_review` rather than a guess. Obtaining that data is the open task, not writing the resolver.
+4. ~~Add duplicate candidate lookup; use PostGIS if straightforward, otherwise Haversine.~~ Done with a bounding-box prefilter plus Haversine. Candidates are surfaced for review only; `duplicate.isDuplicate` still needs something beyond proximity to set it. Authority resolution remains blocked on real jurisdiction boundary data, which is a data-acquisition task, not a coding one.
 5. Keep optional Jev/weather/traffic outside the critical path.

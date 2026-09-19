@@ -10,6 +10,10 @@ export async function POST(
   return apiRoute(async () => {
     const id = await issueIdFrom(context);
     const input = await readJson(request, confirmationRequestSchema);
-    return demoResponse(getIssueRepository().confirm(id, input));
+    return demoResponse(
+      await getIssueRepository().confirm(id, input),
+      200,
+      "live",
+    );
   });
 }

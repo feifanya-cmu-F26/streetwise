@@ -1,20 +1,33 @@
 import { z } from "zod";
 import { authorityResolutionSchema } from "./authority";
 import {
+  issueStatusSchema,
   issueTypeSchema,
   locationSchema,
   reportSchema,
   severitySchema,
 } from "./issue";
 
-// Demo input is intentionally explicit. Live upload/analysis gets its own contract later.
-export const analyzeRequestSchema = z
+// Demo input stays explicit and mock. Live input references an evidence photo
+// already placed in Storage by the /api/issues/upload flow (src/schemas/upload.ts).
+const demoAnalyzeRequestSchema = z
   .object({
     mode: z.literal("demo"),
     demoIssueType: issueTypeSchema,
     location: locationSchema,
   })
   .strict();
+const liveAnalyzeRequestSchema = z
+  .object({
+    mode: z.literal("live"),
+    storagePath: z.string().min(1),
+    location: locationSchema,
+  })
+  .strict();
+export const analyzeRequestSchema = z.discriminatedUnion("mode", [
+  demoAnalyzeRequestSchema,
+  liveAnalyzeRequestSchema,
+]);
 export const duplicateSchema = z.discriminatedUnion("isDuplicate", [
   z.object({
     isDuplicate: z.literal(false),
@@ -27,14 +40,26 @@ export const duplicateSchema = z.discriminatedUnion("isDuplicate", [
     confidence: z.number().min(0).max(1),
   }),
 ]);
+// Nearby reports for a reviewer to judge. Separate from `duplicate`, which is
+// a decision: proximity alone never proves two reports describe one problem.
+export const duplicateCandidateSchema = z.object({
+  issueId: z.uuid(),
+  title: z.string().min(1),
+  status: issueStatusSchema,
+  distanceMeters: z.number().nonnegative(),
+});
 export const issueAnalysisSchema = z.object({
-  mode: z.literal("demo"),
+  mode: z.enum(["demo", "live"]),
   issueType: issueTypeSchema,
   severity: severitySchema,
   description: z.string().min(1).max(4000),
   location: locationSchema,
+  // imagePath is the durable Storage reference that gets persisted; imageUrl
+  // is a short-lived signed URL for the review UI and is never stored.
+  imagePath: z.string().min(1).nullable(),
   imageUrl: z.url().nullable(),
   duplicate: duplicateSchema,
+  duplicateCandidates: z.array(duplicateCandidateSchema).max(5),
   authority: authorityResolutionSchema,
   generatedReport: reportSchema,
   needsReview: z.boolean(),
@@ -55,5 +80,7 @@ export const createIssueRequestSchema = z
     }
   });
 export type AnalyzeRequest = z.infer<typeof analyzeRequestSchema>;
+export type DemoAnalyzeRequest = z.infer<typeof demoAnalyzeRequestSchema>;
+export type DuplicateCandidate = z.infer<typeof duplicateCandidateSchema>;
 export type IssueAnalysis = z.infer<typeof issueAnalysisSchema>;
 export type CreateIssueRequest = z.infer<typeof createIssueRequestSchema>;

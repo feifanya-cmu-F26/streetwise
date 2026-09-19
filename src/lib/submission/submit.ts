@@ -5,5 +5,5 @@ import { prepareDemoSubmission } from "./demo";
 
 export async function submitIssue(id: string) {
   requireDemoMode();
-  return prepareDemoSubmission(getIssueRepository().get(id));
+  return prepareDemoSubmission(await getIssueRepository().get(id));
 }

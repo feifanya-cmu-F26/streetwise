@@ -1,14 +1,28 @@
 # Supabase handoff
 
-Owner: Report Pipeline. No database, migration, bucket, or policy has been created/applied.
+Owner: Report Pipeline. `migrations/0001_init.sql` is a **draft**, not yet applied to any shared project — it needs integration-lead review before running anywhere but a disposable test project.
 
-Use `src/schemas/` to design the first migration. Keep issue lifecycle, community observations, and government submissions distinct. The existing server-only client factory is `src/lib/supabase/client.ts`; it is not used in demo mode.
+While it is a draft, edit `0001_init.sql` in place and re-create disposable projects from it. Once it has been applied to the shared project, stop editing it: `create table if not exists` silently skips an existing table, so an edited `0001` leaves the file and the database disagreeing. From that point every change is a new numbered file.
 
-Before connecting live persistence:
+Use `src/schemas/` to design migrations. Keep issue lifecycle, community observations, and government submissions distinct. The existing server-only client factory is `src/lib/supabase/client.ts`; it is not used in demo mode. The upload contract (`src/schemas/upload.ts`, `POST /api/issues/upload`) issues signed Storage upload URLs against the `issue-evidence` bucket created by the migration; the analyze endpoint's `mode: "live"` request accepts the resulting `storagePath` but does not yet process it (see `docs/agents/report-pipeline.AGENTS.md` Next work #2-3).
 
-1. Define tables and mappings for issues, evidence, observations, and submissions; use a minimal schema appropriate to the demo.
-2. Define access and Storage policies; keep the secret key server-only. Do not expose anonymous unrestricted database writes.
-3. Implement atomic confirmation increments or observation inserts.
-4. Add PostGIS if practical, otherwise keep latitude/longitude and use Haversine candidate lookup.
-5. Add migration files here with reproducible setup instructions and reviewed fixture data.
-6. Verify persistence across restarts and concurrent requests before replacing the demo repository.
+Applying the draft migration (once reviewed):
+
+```sh
+supabase link --project-ref <project-ref>
+supabase db push
+```
+
+Remaining before connecting live persistence:
+
+1. ~~Define tables and mappings for issues, evidence, observations, and submissions.~~ Drafted in `migrations/0001_init.sql`; get it reviewed.
+2. ~~Define access and Storage policies.~~ RLS is enabled with no anonymous policies (service-role only); the bucket is private and enforces a 10 MB `file_size_limit` and an image-only `allowed_mime_types`. Confirm this access model still fits before relying on it.
+   - The bucket row uses `on conflict do update`, so re-running the migration applies changed limits to an existing bucket.
+   - `issues.image_path` holds a Storage path. `Issue.imageUrl` must be signed at read time; do not persist a signed URL.
+   - Nothing promotes objects out of `pending/` or sweeps unused ones yet.
+3. ~~Implement the repository boundary against these tables.~~ `src/lib/supabase/issues.ts` is now the only implementation; the process-local demo repository and its fixtures are gone.
+4. Add PostGIS if practical, otherwise keep latitude/longitude and use Haversine candidate lookup for duplicates.
+5. ~~Add reviewed fixture/seed data for this schema.~~ `seed.sql`; run it after the migration so a fresh project has something to show.
+6. ~~Verify persistence across restarts and concurrent requests.~~ Verified: 10 concurrent confirmations produced exactly 10 observations, and `pnpm test:smoke` passes against a live project.
+
+Still missing: nothing sweeps `pending/` objects whose slot was never claimed, and analysis is not connected, so `issues.image_path` is only ever set by a client that supplies `analysis.imagePath` on creation.
