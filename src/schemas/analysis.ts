@@ -45,6 +45,9 @@ export const issueAnalysisSchema = z.object({
   severity: severitySchema,
   description: z.string().min(1).max(4000),
   location: locationSchema,
+  // imagePath is the durable Storage reference that gets persisted; imageUrl
+  // is a short-lived signed URL for the review UI and is never stored.
+  imagePath: z.string().min(1).nullable(),
   imageUrl: z.url().nullable(),
   duplicate: duplicateSchema,
   authority: authorityResolutionSchema,

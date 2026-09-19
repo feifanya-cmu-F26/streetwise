@@ -8,6 +8,10 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   return apiRoute(async () =>
-    demoResponse(getIssueRepository().get(await issueIdFrom(context))),
+    demoResponse(
+      await getIssueRepository().get(await issueIdFrom(context)),
+      200,
+      "live",
+    ),
   );
 }

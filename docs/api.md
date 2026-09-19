@@ -1,6 +1,11 @@
 # API contracts
 
-All current endpoints operate in demo mode. JSON requests use `Content-Type: application/json`. Successful responses are `{ "data": ..., "meta": { "mode": "demo" } }`; errors are `{ "error": { "code": "...", "message": "..." } }`. Responses use `Cache-Control: no-store`.
+Issue persistence is Supabase-backed and has no in-process fallback: without
+`SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `SUPABASE_STORAGE_BUCKET` every
+issue endpoint returns 503 rather than serving fixtures. Analysis and
+government submission are still simulated.
+
+JSON requests use `Content-Type: application/json`. Successful responses are `{ "data": ..., "meta": { "mode": "demo" | "live" } }`; errors are `{ "error": { "code": "...", "message": "..." } }`. Responses use `Cache-Control: no-store`.
 
 | Method and path                | Request                                                | Response data       |
 | ------------------------------ | ------------------------------------------------------ | ------------------- |
@@ -12,7 +17,7 @@ All current endpoints operate in demo mode. JSON requests use `Content-Type: app
 | `POST /api/issues/:id/confirm` | `{ kind: "still_there" \| "resolved" }`                | Updated `Issue`     |
 | `POST /api/issues/:id/submit`  | `{ mode: "demo", reviewed: true }`                     | `SubmissionResult`  |
 
-`meta.mode` in the response envelope is `"demo"` or `"live"` depending on which path served the request; it is not tied to a single global flag.
+`meta.mode` in the response envelope is `"demo"` or `"live"` depending on which path served the request; it is not tied to a single global flag. Issue reads, creation, and confirmation are `"live"` because they hit the database; analysis and submission are `"demo"` because they are still simulated.
 
 ## Analyze sample
 
@@ -63,7 +68,9 @@ Agreed rules behind this contract:
 
 ## Review and creation
 
-Preserve the analysis object, edit `generatedReport.title` and `generatedReport.description`, then send the edited report separately as `report` to `POST /api/issues`. Its category must match the analysis. A positive duplicate decision is rejected with 409 rather than silently producing a new issue. The caller-supplied analysis is trusted only for this local demo; real creation must use persisted server analysis or equivalent verification.
+Preserve the analysis object, edit `generatedReport.title` and `generatedReport.description`, then send the edited report separately as `report` to `POST /api/issues`. Its category must match the analysis. A positive duplicate decision is rejected with 409 rather than silently producing a new issue.
+
+Creation still trusts the caller-supplied analysis, which real creation must replace with persisted server analysis or equivalent verification. Until then `analysis.imagePath` is treated as an untrusted claim: it is only accepted if it names an evidence slot this server issued that no issue has claimed, otherwise the request is rejected with 400 `EVIDENCE_NOT_AVAILABLE` before anything is written. Severity, authority, and duplicate fields are still taken on trust.
 
 ## Community and submission
 
@@ -89,12 +96,13 @@ Repeating preparation does not create an issue or change stored government statu
 ## Error status codes
 
 - 400: malformed JSON, invalid coordinates, invalid UUID, unsupported enum, missing review, or wrong request shape.
-- 404: issue missing in the current process (including after a restart).
+- 400: also `EVIDENCE_NOT_AVAILABLE` when `analysis.imagePath` is not an unclaimed slot this server issued.
+- 404: issue missing in the database.
 - 409: positive duplicate decision on creation.
 - 415: request is not JSON.
 - 501: `LIVE_ANALYSIS_NOT_IMPLEMENTED` — the live analyze request shape is valid but not processed yet.
-- 502: `STORAGE_SIGN_FAILED` or `EVIDENCE_RECORD_FAILED` — Supabase rejected the signed upload URL request or the evidence insert.
-- 503: `STREETWISE_MODE` is not `demo` (demo-only routes), or `SERVICE_NOT_CONFIGURED` (missing Supabase env vars on live routes).
+- 502: `DATABASE_ERROR`, `STORAGE_SIGN_FAILED`, `EVIDENCE_RECORD_FAILED`, or `EVIDENCE_PROMOTE_FAILED` — Supabase rejected a query, the signed upload URL request, the evidence insert, or the move out of `pending/`.
+- 503: `STREETWISE_MODE` is not `demo` (analysis and submission), or `SERVICE_NOT_CONFIGURED` (missing Supabase env vars, which every issue endpoint needs).
 - 500: unexpected internal failure; no internal exception details are returned to the client.
 
 Authoritative definitions: `src/schemas/`. Do not copy independent client interfaces from this document.

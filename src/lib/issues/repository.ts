@@ -1,17 +1,13 @@
 import "server-only";
-import { requireDemoMode } from "@/lib/env";
 import {
-  createDemoRepository,
+  createSupabaseRepository,
   type IssueRepository,
-} from "@/lib/demo/repository";
+} from "@/lib/supabase/issues";
 
-const demoGlobal = globalThis as typeof globalThis & {
-  streetwiseDemoRepository?: IssueRepository;
-};
+export type { IssueRepository };
 
+// Persistence is Supabase-only: there is no in-process fallback, so a missing
+// SUPABASE_* configuration fails loudly instead of quietly serving fixtures.
 export function getIssueRepository(): IssueRepository {
-  requireDemoMode();
-  // One local Node process only. Replace this boundary with Supabase for shared persistence.
-  demoGlobal.streetwiseDemoRepository ??= createDemoRepository();
-  return demoGlobal.streetwiseDemoRepository;
+  return createSupabaseRepository();
 }

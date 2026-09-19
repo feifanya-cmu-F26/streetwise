@@ -33,8 +33,8 @@ Use `feat/report-pipeline`. Ship small PRs with stable contracts. Run `pnpm chec
 
 ## Next work
 
-1. Agree real upload and analysis contracts; add a reviewed Supabase migration and Storage policies.
-2. Implement persistence and atomic observations behind the repository boundary.
-3. Connect image analysis, reverse geocoding, authority rules, and report generation.
+1. ~~Agree real upload and analysis contracts; add a Supabase migration and Storage policies.~~ Done in code and verified against a disposable project; the migration still needs integration-lead review.
+2. ~~Implement persistence and atomic observations behind the repository boundary.~~ Done: Supabase is the only implementation, observations insert and a trigger keeps the counters atomic.
+3. Connect image analysis, reverse geocoding, authority rules, and report generation. Until this lands, `analyze` still returns demo output and `mode: "live"` returns 501.
 4. Add duplicate candidate lookup; use PostGIS if straightforward, otherwise Haversine.
 5. Keep optional Jev/weather/traffic outside the critical path.

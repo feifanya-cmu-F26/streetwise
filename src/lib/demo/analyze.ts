@@ -13,6 +13,7 @@ export function analyzeDemoIssue(input: DemoAnalyzeRequest) {
     severity: "medium",
     description,
     location: input.location,
+    imagePath: null,
     imageUrl: null,
     duplicate: { isDuplicate: false, existingIssueId: null, confidence: 0 },
     authority: {

@@ -20,7 +20,9 @@ Remaining before connecting live persistence:
    - The bucket row uses `on conflict do update`, so re-running the migration applies changed limits to an existing bucket.
    - `issues.image_path` holds a Storage path. `Issue.imageUrl` must be signed at read time; do not persist a signed URL.
    - Nothing promotes objects out of `pending/` or sweeps unused ones yet.
-3. Implement the repository boundary against these tables (`src/lib/issues/repository.ts` currently only has the process-local demo implementation).
+3. ~~Implement the repository boundary against these tables.~~ `src/lib/supabase/issues.ts` is now the only implementation; the process-local demo repository and its fixtures are gone.
 4. Add PostGIS if practical, otherwise keep latitude/longitude and use Haversine candidate lookup for duplicates.
-5. Add reviewed fixture/seed data for this schema alongside `src/lib/demo/fixtures.ts`.
-6. Verify persistence across restarts and concurrent requests before replacing the demo repository.
+5. ~~Add reviewed fixture/seed data for this schema.~~ `seed.sql`; run it after the migration so a fresh project has something to show.
+6. ~~Verify persistence across restarts and concurrent requests.~~ Verified: 10 concurrent confirmations produced exactly 10 observations, and `pnpm test:smoke` passes against a live project.
+
+Still missing: nothing sweeps `pending/` objects whose slot was never claimed, and analysis is not connected, so `issues.image_path` is only ever set by a client that supplies `analysis.imagePath` on creation.

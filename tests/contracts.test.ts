@@ -5,12 +5,14 @@ import {
   createIssueRequestSchema,
   type DemoAnalyzeRequest,
 } from "../src/schemas/analysis";
-import { issueSchema } from "../src/schemas/issue";
 import { submissionRequestSchema } from "../src/schemas/submission";
 import { uploadRequestSchema } from "../src/schemas/upload";
 import { analyzeDemoIssue } from "../src/lib/demo/analyze";
-import { createDemoRepository } from "../src/lib/demo/repository";
-import { seedIssues } from "../src/lib/demo/fixtures";
+import {
+  insertRowFromRequest,
+  issueFromRow,
+  type IssueRow,
+} from "../src/lib/issues/mapping";
 import { prepareDemoSubmission } from "../src/lib/submission/demo";
 
 const input = analyzeRequestSchema.parse({
@@ -19,13 +21,27 @@ const input = analyzeRequestSchema.parse({
   location: { lat: 37.394, lng: -122.081 },
 }) as DemoAnalyzeRequest;
 
-test("fixtures conform and never contain a fictional government receipt", () => {
-  assert.equal(issueSchema.array().parse(seedIssues).length, 3);
-  for (const issue of seedIssues) {
-    assert.equal(issue.submission.status, "not_submitted");
-    assert.equal(issue.submission.externalRequestId, null);
-  }
-});
+const row: IssueRow = {
+  id: "00000000-0000-4000-8000-000000000001",
+  type: "pothole",
+  severity: "medium",
+  lat: 37.394,
+  lng: -122.081,
+  address: "Castro Street, Mountain View · sample location",
+  image_path: "issues/00000000-0000-4000-8000-000000000001/photo.jpg",
+  report_title: "Pavement damage near the crossing",
+  report_description: "Sample report: damaged pavement near a crossing.",
+  authority_status: "resolved",
+  authority_id: "mountain_view",
+  authority_reason: "Illustrative assignment, not a verified decision.",
+  status: "ready",
+  still_there_count: 4,
+  resolved_count: 0,
+  last_verified_at: null,
+  created_at: "2026-09-18T16:00:00.000Z",
+  updated_at: "2026-09-18T16:00:00.000Z",
+  submissions: null,
+};
 
 test("demo analysis preserves coordinates and admits unresolved authority", () => {
   const analysis = analyzeDemoIssue(input);
@@ -83,47 +99,52 @@ test("coordinates and explicit demo boundaries reject invalid inputs", () => {
   );
 });
 
-test("creation uses reviewed text and does not submit to government", () => {
-  const repository = createDemoRepository([]);
-  const analysis = analyzeDemoIssue(input);
-  const issue = repository.create({
-    analysis,
-    report: { ...analysis.generatedReport, title: "Reviewed title" },
-  });
-  assert.equal(issue.report.title, "Reviewed title");
+test("a database row maps onto the issue contract", () => {
+  const issue = issueFromRow(row, "https://example.com/signed.jpg");
+  assert.equal(issue.imageUrl, "https://example.com/signed.jpg");
+  assert.equal(issue.report.category, issue.type);
+  assert.equal(issue.community.stillThere, 4);
+  assert.equal(issue.authority.status, "resolved");
+  assert.equal(issue.authority.authority?.name, "City of Mountain View");
+  // A row with no submissions row is not_submitted, never a fabricated receipt.
   assert.equal(issue.submission.status, "not_submitted");
-  assert.equal(repository.list().length, 1);
+  assert.equal(issue.submission.externalRequestId, null);
 });
 
-test("observations change community evidence only and reads cannot mutate storage", () => {
-  const repository = createDemoRepository();
-  const before = repository.get(seedIssues[0].id);
-  repository.confirm(before.id, { kind: "still_there" });
-  const after = repository.confirm(before.id, { kind: "resolved" });
-  assert.equal(after.community.stillThere, before.community.stillThere + 1);
-  assert.equal(after.community.resolved, before.community.resolved + 1);
-  assert.deepEqual(after.submission, before.submission);
-  assert.equal(after.status, before.status);
-  after.report.title = "Injected mutation";
-  assert.equal(repository.get(before.id).report.title, before.report.title);
+test("an unsigned or unknown-authority row degrades instead of inventing data", () => {
+  assert.equal(issueFromRow(row, null).imageUrl, null);
+  const stale = issueFromRow({ ...row, authority_id: "former_agency" }, null);
+  assert.equal(stale.authority.status, "needs_review");
+  assert.equal(stale.authority.authority, null);
+});
+
+test("creation uses reviewed text and never persists a government receipt", () => {
+  const analysis = analyzeDemoIssue(input);
+  const insert = insertRowFromRequest(
+    {
+      analysis,
+      report: { ...analysis.generatedReport, title: "Reviewed title" },
+    },
+    "pending/photo.jpg",
+  );
+  assert.equal(insert.report_title, "Reviewed title");
+  assert.equal(insert.image_path, "pending/photo.jpg");
+  assert.equal(insert.authority_status, "needs_review");
+  assert.equal(insert.authority_id, null);
+  assert.equal(insert.status, "ready");
+  assert.ok(!("submission" in insert));
 });
 
 test("demo preparation is repeatable and never mutates submission state", () => {
-  const repository = createDemoRepository();
-  const issue = repository.get(seedIssues[0].id);
+  const issue = issueFromRow(row, null);
   const result = prepareDemoSubmission(issue);
   assert.deepEqual(prepareDemoSubmission(issue), result);
   assert.equal(result.status, "prepared");
   assert.equal(result.submittedToGovernment, false);
-  assert.deepEqual(repository.get(issue.id), issue);
+  assert.deepEqual(issueFromRow(row, null), issue);
 });
 
-test("unknown issues, duplicate decisions, and mismatched categories are rejected", () => {
-  const repository = createDemoRepository();
-  assert.throws(
-    () => repository.get("00000000-0000-4000-8000-000000000099"),
-    /not found/,
-  );
+test("duplicate decisions and mismatched categories are rejected", () => {
   const analysis = analyzeDemoIssue(input);
   assert.equal(
     createIssueRequestSchema.safeParse({
@@ -132,13 +153,18 @@ test("unknown issues, duplicate decisions, and mismatched categories are rejecte
     }).success,
     false,
   );
-  analysis.duplicate = {
-    isDuplicate: true,
-    existingIssueId: seedIssues[0].id,
-    confidence: 0.9,
-  };
-  assert.throws(
-    () => repository.create({ analysis, report: analysis.generatedReport }),
-    /existing issue/,
+  assert.equal(
+    createIssueRequestSchema.safeParse({
+      analysis: {
+        ...analysis,
+        duplicate: {
+          isDuplicate: true,
+          existingIssueId: row.id,
+          confidence: 0.9,
+        },
+      },
+      report: analysis.generatedReport,
+    }).success,
+    true,
   );
 });
