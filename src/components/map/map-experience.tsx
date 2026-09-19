@@ -1,164 +1,320 @@
 "use client";
-
-import { useCallback, useEffect, useState } from "react";
+import { useRef, useState, type PointerEvent, type TouchEvent } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import Image from "next/image";
+import { ChevronRight, Navigation, MapPin, Search, X, LoaderCircle } from "lucide-react";
+import { issuePhoto } from "@/lib/demo/presentation";
+import {
+  distanceMeters,
+  distanceLabel,
+  sampleCenter,
+} from "@/lib/geo/distance";
+import { ReportedStatus } from "@/components/prototype/common";
 import { IssueMap } from "./issue-map";
-import { IssueDetail } from "@/components/issue/issue-detail";
-import { apiFetch } from "@/lib/api/client";
-import { issueTypeLabels } from "@/lib/issues/labels";
-import { issuesResponseSchema } from "@/schemas/api";
-import type { Issue } from "@/schemas/issue";
-
-export function MapExperience({ initialIssueId }: { initialIssueId?: string }) {
-  const [issues, setIssues] = useState<Issue[]>([]);
+import { BrandMark } from "@/components/ui/streetwise-icons";
+import { useLocation } from "@/components/prototype/location-provider";
+import { useLive } from "@/components/live/provider";
+type Snap = "collapsed" | "middle" | "expanded";
+export function MapExperience({
+  initialIssueId,
+  active = true,
+}: {
+  initialIssueId?: string;
+  active?: boolean;
+}) {
   const [selectedId, setSelectedId] = useState<string | null>(
-    initialIssueId ?? null,
-  );
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const load = useCallback(
-    (signal?: AbortSignal) =>
-      apiFetch("/api/issues", issuesResponseSchema, { signal })
-        .then(({ data }) => {
-          if (signal?.aborted) return;
-          setIssues(data);
-          setError("");
-        })
-        .catch((error: unknown) => {
-          if (signal?.aborted) return;
-          setError(
-            error instanceof Error ? error.message : "Could not load issues.",
-          );
-        })
-        .finally(() => {
-          if (!signal?.aborted) setLoading(false);
-        }),
-    [],
-  );
-  useEffect(() => {
-    const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
-  }, [load]);
-  const selected = issues.find((issue) => issue.id === selectedId);
+      initialIssueId || null,
+    ),
+    [snap, setSnap] = useState<Snap>("middle"),
+    [dragHeight, setDragHeight] = useState<number | null>(null);
+  const [query, setQuery] = useState(""),
+    [searchOpen, setSearchOpen] = useState(false),
+    [origin, setOrigin] = useState(sampleCenter),
+    [message, setMessage] = useState(""),
+    [recenter, setRecenter] = useState(0);
+  const [following, setFollowing] = useState(false);
+  const gps = useLocation();
+  const { issues: displayIssues, error: loadError } = useLive();
+  const locating = gps.locating,
+    located = !!gps.point;
+  const sheet = useRef<HTMLElement>(null),
+    drag = useRef<{
+      y: number;
+      height: number;
+      moved: boolean;
+      currentHeight: number;
+    } | null>(null);
+  const issues = displayIssues
+    .filter((i) =>
+      `${i.report.title} ${i.location.address}`
+        .toLowerCase()
+        .includes(query.toLowerCase()),
+    )
+    .map((issue) => ({
+      issue,
+      distance: distanceMeters(gps.point || origin, issue.location),
+    }))
+    .sort((a, b) => a.distance - b.distance);
+  const selected = issues.find((i) => i.issue.id === selectedId);
+  async function locate() {
+    const point = await gps.request();
+    if (point) {
+      setOrigin(point);
+      setFollowing(true);
+      setRecenter((n) => n + 1);
+    }
+  }
+  const heights = () => ({
+    collapsed: 108,
+    middle: Math.max(
+      296,
+      (window.visualViewport?.height || window.innerHeight) * 0.36,
+    ),
+    expanded: window.innerHeight - 180,
+  });
+  function dragStart(e: PointerEvent<HTMLElement>) {
+    if (e.pointerType === "touch") return;
+    drag.current = {
+      y: e.clientY,
+      height: sheet.current?.getBoundingClientRect().height || 270,
+      moved: false,
+      currentHeight: sheet.current?.getBoundingClientRect().height || 270,
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function dragMove(e: PointerEvent<HTMLElement>) {
+    if (e.pointerType === "touch") return;
+    if (!drag.current) return;
+    const delta = drag.current.y - e.clientY;
+    if (Math.abs(delta) > 4) drag.current.moved = true;
+    drag.current.currentHeight = Math.max(
+      108,
+      Math.min(heights().expanded, drag.current.height + delta),
+    );
+    setDragHeight(drag.current.currentHeight);
+  }
+  function touchStart(e: TouchEvent<HTMLElement>) {
+    if (e.touches.length !== 1) return;
+    const height = sheet.current?.getBoundingClientRect().height || 270;
+    drag.current = {
+      y: e.touches[0].clientY,
+      height,
+      currentHeight: height,
+      moved: false,
+    };
+  }
+  function touchMove(e: TouchEvent<HTMLElement>) {
+    if (!drag.current || e.touches.length !== 1) return;
+    const delta = drag.current.y - e.touches[0].clientY;
+    if (Math.abs(delta) > 4) drag.current.moved = true;
+    drag.current.currentHeight = Math.max(
+      108,
+      Math.min(heights().expanded, drag.current.height + delta),
+    );
+    setDragHeight(drag.current.currentHeight);
+  }
+  function finishDrag() {
+    if (!drag.current) return;
+    if (drag.current.moved) {
+      const sizes = heights();
+      const nearest = (Object.keys(sizes) as Snap[]).sort(
+        (a, b) =>
+          Math.abs(sizes[a] - (drag.current?.currentHeight || 270)) -
+          Math.abs(sizes[b] - (drag.current?.currentHeight || 270)),
+      )[0];
+      setSnap(nearest);
+      if (nearest === "expanded") setSelectedId(null);
+    } else {
+      setSnap(snap === "expanded" ? "middle" : "expanded");
+      setSelectedId(null);
+    }
+    drag.current = null;
+    setDragHeight(null);
+  }
   return (
-    <main id="main" className="mx-auto max-w-[1600px] p-5 sm:p-8">
-      <div className="mb-7 flex flex-wrap items-end justify-between gap-5">
-        <div>
-          <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            Your neighborhood, together
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            Small reports. Better streets.
-          </h1>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Explore sample issues around Mountain View.
-          </p>
-        </div>
-        <Button asChild>
-          <Link href="/report">
-            <Plus size={18} aria-hidden="true" />
-            Try a demo report
-          </Link>
-        </Button>
-      </div>
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <IssueMap
-          issues={issues}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-        />
-        <aside
-          className="overflow-hidden rounded-xl border border-border bg-white"
-          aria-label="Neighborhood issues"
+    <main className="map-home">
+      <IssueMap
+        active={active}
+        userLocation={gps.point}
+        issues={issues.map((i) => i.issue)}
+        selectedId={selected?.issue.id || null}
+        origin={following && gps.point ? gps.point : origin}
+        onUserMove={() => setFollowing(false)}
+        recenter={recenter}
+        selectedDistance={selected ? distanceLabel(selected.distance) : ""}
+        onSelect={(id) => {
+          setSelectedId(id);
+          if (snap === "expanded") setSnap("middle");
+        }}
+        onClose={() => {
+          setSelectedId(null);
+          setSnap("middle");
+        }}
+      />
+      <header className="map-toolbar">
+        <Link href="/" className="wordmark" aria-label="Streetwise home">
+          <BrandMark size={24} />
+          <span>Streetwise</span>
+        </Link>
+        <span className="toolbar-divider" />
+        <button className="location-selector" onClick={locate}>
+          <MapPin size={16} className="address-pin" aria-hidden="true" />
+          <span>
+            {located
+              ? "Your location"
+              : origin.lat === sampleCenter.lat &&
+                  origin.lng === sampleCenter.lng
+                ? "Mountain View"
+                : "Map center"}
+          </span>
+        </button>
+        <button
+          className="icon-button"
+          aria-label="Search issues"
+          onClick={() => setSearchOpen((v) => !v)}
         >
-          {loading ? (
-            <p role="status" className="p-6">
-              Loading sample issues…
-            </p>
-          ) : error ? (
-            <div className="p-6">
-              <p role="alert" className="text-sm text-red-700">
-                {error}
-              </p>
-              <Button
-                variant="outline"
-                className="mt-4"
-                onClick={() => {
-                  setLoading(true);
-                  void load();
-                }}
+          <Search size={21} />
+        </button>
+      </header>
+      {searchOpen && (
+        <div className="map-search">
+          <Search size={19} />
+          <input
+            autoFocus
+            aria-label="Search nearby issues"
+            placeholder="Search nearby issues"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <button
+            aria-label="Clear and close search"
+            onClick={() => {
+              setQuery("");
+              setSearchOpen(false);
+            }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+      )}
+      {(message || gps.error || loadError) && (
+        <div className="map-message" role="status">
+          <span>{message || gps.error || loadError}</span>
+          <button
+            aria-label="Dismiss location message"
+            onClick={() => {
+              setMessage("");
+              gps.dismissError();
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+      <button
+        className="recenter-button"
+        aria-label="Use my current location"
+        disabled={locating}
+        onClick={locate}
+        style={{ bottom: dragHeight ? dragHeight + 112 : undefined }}
+      >
+        {locating ? <LoaderCircle size={22} className="animate-spin" /> : <Navigation size={22} />}
+      </button>
+      <section
+        ref={sheet}
+        className={`nearby-sheet ${snap}`}
+        aria-label="Nearby issues"
+        style={
+          dragHeight ? { height: dragHeight, transition: "none" } : undefined
+        }
+      >
+        <button
+          className="sheet-handle"
+          aria-label="Expand or collapse nearby issues"
+          aria-expanded={snap === "expanded"}
+          onPointerDown={dragStart}
+          onPointerMove={dragMove}
+          onPointerUp={(e) => {
+            if (e.pointerType !== "touch") finishDrag();
+          }}
+          onTouchStart={touchStart}
+          onTouchMove={touchMove}
+          onTouchEnd={finishDrag}
+          onTouchCancel={() => {
+            drag.current = null;
+            setDragHeight(null);
+          }}
+          onPointerCancel={() => {
+            drag.current = null;
+            setDragHeight(null);
+          }}
+          onKeyDown={(e) => {
+            if (["ArrowUp", "ArrowDown", "Enter", " "].includes(e.key)) {
+              e.preventDefault();
+              setSnap(
+                e.key === "ArrowDown"
+                  ? "collapsed"
+                  : snap === "expanded" && e.key !== "ArrowUp"
+                    ? "middle"
+                    : "expanded",
+              );
+            }
+          }}
+        >
+          <span />
+        </button>
+        <div
+          className="sheet-heading"
+          onTouchStart={(e) => {
+            if (!(e.target as HTMLElement).closest("button")) touchStart(e);
+          }}
+          onTouchMove={touchMove}
+          onTouchEnd={finishDrag}
+          onTouchCancel={() => {
+            drag.current = null;
+            setDragHeight(null);
+          }}
+        >
+          <div>
+            <h1>
+              Around you <span>{issues.length}</span>
+            </h1>
+          </div>
+        </div>
+        <div className="nearby-list">
+          {issues.length ? (
+            issues.map(({ issue, distance }) => (
+              <Link
+                className="issue-row"
+                href={`/issues/${issue.id}`}
+                key={issue.id}
               >
-                Try again
-              </Button>
-            </div>
-          ) : selected ? (
-            <IssueDetail
-              key={selected.id}
-              issue={selected}
-              onBack={() => setSelectedId(null)}
-              onUpdate={(next) =>
-                setIssues((current) =>
-                  current.map((issue) => (issue.id === next.id ? next : issue)),
-                )
-              }
-            />
+                <Image
+                  src={issuePhoto(issue)}
+                  width={64}
+                  height={64}
+                  alt=""
+                  unoptimized
+                />
+                <div className="issue-row-copy">
+                  <strong>{issue.report.title}</strong>
+                  <ReportedStatus issue={issue} />
+                </div>
+                <span className="issue-distance">
+                  {distanceLabel(distance)}
+                </span>
+                <ChevronRight size={16} className="row-chevron" />
+              </Link>
+            ))
           ) : (
-            <>
-              <div className="border-b border-border p-5">
-                <h2 className="font-semibold">
-                  Sample issues{" "}
-                  <span className="ml-1 text-muted-foreground">
-                    {issues.length}
-                  </span>
-                </h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Select an issue to explore the details.
-                </p>
-              </div>
-              {selectedId && (
-                <p role="status" className="px-5 pt-4 text-sm">
-                  That demo issue is no longer available. Select another below.
-                </p>
-              )}
-              {issues.length === 0 && (
-                <p className="p-5 text-sm">
-                  No sample issues yet. Try creating a demo report.
-                </p>
-              )}
-              <ul>
-                {issues.map((issue) => (
-                  <li
-                    key={issue.id}
-                    className="border-b border-border last:border-0"
-                  >
-                    <button
-                      onClick={() => setSelectedId(issue.id)}
-                      className="w-full p-5 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
-                    >
-                      <span className="flex justify-between gap-4">
-                        <span className="text-xs text-muted-foreground">
-                          {issueTypeLabels[issue.type]}
-                        </span>
-                        <ArrowUpRight size={16} aria-hidden="true" />
-                      </span>
-                      <span className="mt-2 block font-semibold leading-6">
-                        {issue.report.title}
-                      </span>
-                      <span className="mt-2 block text-xs text-muted-foreground">
-                        {issue.community.stillThere} still there ·{" "}
-                        {issue.submission.status.replaceAll("_", " ")}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </>
+            <p className="empty-search">
+              {query
+                ? `No issues match “${query}”.`
+                : "No reported issues here yet."}
+            </p>
           )}
-        </aside>
-      </div>
+        </div>
+      </section>
     </main>
   );
 }

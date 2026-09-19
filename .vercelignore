@@ -1,0 +1,11 @@
+.env*
+!.env.example
+.next*
+node_modules
+.git
+artifacts
+docs/design
+tests
+design-qa.md
+DESIGN.md
+*.log

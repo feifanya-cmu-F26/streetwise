@@ -1,14 +1,11 @@
-import { apiRoute, demoResponse, issueIdFrom, readJson } from "@/lib/api/route";
-import { submitIssue } from "@/lib/submission/submit";
-import { submissionRequestSchema } from "@/schemas/submission";
-
-export const runtime = "nodejs";
-export async function POST(
-  request: Request,
-  context: { params: Promise<{ id: string }> },
-) {
+import { apiRoute } from "@/lib/api/route";
+import { ApiError } from "@/lib/api/errors";
+export async function POST() {
   return apiRoute(async () => {
-    await readJson(request, submissionRequestSchema);
-    return demoResponse(await submitIssue(await issueIdFrom(context)));
+    throw new ApiError(
+      410,
+      "USE_REPORT_FLOW",
+      "Submit through your authenticated report review.",
+    );
   });
 }

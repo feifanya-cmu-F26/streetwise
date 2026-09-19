@@ -1,12 +1,12 @@
-import { apiRoute, demoResponse, readJson } from "@/lib/api/route";
-import { analyzeRequestSchema } from "@/schemas/analysis";
-import { analyzeIssue } from "@/lib/report/analyze";
-
-export const runtime = "nodejs";
-export async function POST(request: Request) {
-  return apiRoute(async () =>
-    demoResponse(
-      await analyzeIssue(await readJson(request, analyzeRequestSchema)),
-    ),
-  );
+import { apiRoute } from "@/lib/api/route";
+import { ApiError } from "@/lib/api/errors";
+// Analysis is durable and owner-scoped through POST /api/reports.
+export async function POST() {
+  return apiRoute(async () => {
+    throw new ApiError(
+      410,
+      "USE_REPORT_FLOW",
+      "Create a report through /api/reports to analyze an uploaded photo.",
+    );
+  });
 }

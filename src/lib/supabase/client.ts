@@ -2,7 +2,7 @@ import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import { requiredServerEnv } from "@/lib/env";
 
-// Not called in demo mode. The pipeline owner must add tables, RLS and upload policy first.
+// Privileged server-only access. Private route callers must enforce owner scope.
 export function createServerSupabaseClient() {
   return createClient(
     requiredServerEnv("SUPABASE_URL"),

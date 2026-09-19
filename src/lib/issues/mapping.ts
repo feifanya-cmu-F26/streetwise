@@ -14,6 +14,8 @@ export type IssueRow = {
   lng: number;
   address: string | null;
   image_path: string | null;
+  owner_id?: string;
+  photo_public?: boolean;
   report_title: string;
   report_description: string;
   authority_status: "resolved" | "needs_review";

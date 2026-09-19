@@ -10,3 +10,7 @@ coverage/
 .vercel/
 artifacts/
 *.log
+
+.next-preview/
+.next-integration/
+.vercel

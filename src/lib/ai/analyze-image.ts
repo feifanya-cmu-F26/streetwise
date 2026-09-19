@@ -14,9 +14,9 @@ const visionOutputSchema = z.object({
   unusableReason: z.string().nullable(),
   issueType: issueTypeSchema.nullable(),
   severity: severitySchema.nullable(),
-  observation: z.string().nullable(),
-  reportTitle: z.string().nullable(),
-  reportDescription: z.string().nullable(),
+  observation: z.string().max(4000).nullable(),
+  reportTitle: z.string().max(160).nullable(),
+  reportDescription: z.string().max(4000).nullable(),
 });
 
 export type VisionAnalysis = {
@@ -55,13 +55,8 @@ function readVisionResult(
         "This photo does not show a reportable street problem clearly enough to analyze.",
     );
   }
-  const {
-    issueType,
-    severity,
-    observation,
-    reportTitle,
-    reportDescription,
-  } = output;
+  const { issueType, severity, observation, reportTitle, reportDescription } =
+    output;
   // usable: true with missing fields is a malformed answer, not a report.
   if (
     !issueType ||

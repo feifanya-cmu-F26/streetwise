@@ -1,4 +1,5 @@
 import "server-only";
+import { ApiError } from "@/lib/api/errors";
 import { createServerSupabaseClient } from "@/lib/supabase/client";
 import { boundingBoxDeltas, rankCandidates } from "@/lib/issues/distance";
 import type { DuplicateCandidate } from "@/schemas/analysis";
@@ -15,10 +16,11 @@ export async function findDuplicateCandidates(
 ): Promise<DuplicateCandidate[]> {
   // Bounding box in SQL, exact distance in memory. PostGIS would replace both.
   const { latDelta, lngDelta } = boundingBoxDeltas(location.lat);
-  const { data } = await createServerSupabaseClient()
+  const { data, error } = await createServerSupabaseClient()
     .from("issues")
     .select("id, report_title, lat, lng, status")
     .eq("type", type)
+    .eq("is_demo", false)
     .neq("status", "resolved")
     .gte("lat", location.lat - latDelta)
     .lte("lat", location.lat + latDelta)
@@ -33,5 +35,11 @@ export async function findDuplicateCandidates(
         status: IssueStatus;
       }[]
     >();
+  if (error)
+    throw new ApiError(
+      502,
+      "DUPLICATE_LOOKUP_FAILED",
+      "Could not check for nearby reports. Try again.",
+    );
   return rankCandidates(location, data ?? []);
 }

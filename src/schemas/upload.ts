@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 // Contract for requesting a direct-to-Storage upload slot before analysis.
-// The client PUTs the file to `uploadUrl`, then calls /api/issues/analyze
-// with mode "live" and the returned `storagePath`.
+// The client PUTs the file to `uploadUrl`, then creates a durable /api/reports
+// task with a stable UUID and the returned `storagePath`.
 export const acceptedImageTypeSchema = z.enum([
   "image/jpeg",
   "image/png",

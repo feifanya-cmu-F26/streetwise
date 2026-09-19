@@ -1,83 +1,39 @@
 # Streetwise
 
-A runnable collaboration skeleton for a three-person civic reporting hackathon. Browse fictional neighborhood issues, add sample community observations, and walk through simulated analysis → editable review → demo report preparation.
+Map-first civic reporting: photograph an issue, review the AI report and agency, prepare an official portal form, watch or take over the browser, approve a real submission, and follow verified government status.
 
-**No government report is sent. No cloud account or secret is required to run the demo.**
+Live deployment: https://streetwise-sigma.vercel.app
 
-## Start
+## Development
 
-Use Node.js 24 (recommended; minimum 22.13) and pnpm 11.7.0. Install that pnpm version if needed with `npm install --global pnpm@11.7.0`.
+Use Node.js 24 (minimum 22.18) and pnpm 11.7.0.
 
 ```sh
 pnpm install --frozen-lockfile
+cp .env.example .env.local
+# Fill the existing service credentials, then:
 pnpm dev
 ```
 
-Open [localhost:3000](http://localhost:3000). For a production build locally:
+The application requires Supabase, AI Gateway and Browserbase server credentials. The public Mapbox token enables the basemap. Apply the two SQL migrations to a new project in order; existing projects use the additive second migration. Never replace a working `.env.local` with the template.
 
-```sh
-pnpm build
-pnpm start
-```
+Enable Supabase anonymous sign-ins for the default **Continue as guest** entry. Each browser keeps its own private reports; email login is optional. Guest records cannot be recovered after losing the browser session. Run `STREETWISE_TEST_GUEST=1 pnpm test:smoke <app-url>` to exercise guest creation, session reuse and report/browser isolation using disposable data.
 
-The dependency lockfile is committed as a project file; use pnpm only. `pnpm-workspace.yaml` contains pnpm build-script approvals, not a monorepo configuration.
-
-## Optional configuration
-
-```sh
-cp .env.example .env.local
-```
-
-Set `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN` to a public Mapbox token and restart the dev server to enable the real basemap. Without it, the placeholder, issue list, details, observations, and report flow still work. In a production build, public environment variables are baked in at build time.
-
-All other environment variables are future integration seams. Adding credentials does not enable live services. `STREETWISE_MODE` defaults to `demo`; unsupported modes fail explicitly.
-
-## Team entry points
-
-| Role                               | Start here                                                                                                |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Everyone                           | [AGENTS.md](AGENTS.md), [GOAL.md](GOAL.md), [team workflow](docs/team-workflow.md)                        |
-| Web UI / Map                       | [role guide](docs/agents/web-ui.AGENTS.md), `src/components/map/`, `src/components/issue/`                |
-| Report Pipeline                    | [role guide](docs/agents/report-pipeline.AGENTS.md), `src/schemas/`, `src/lib/report/`, `src/lib/issues/` |
-| Product / Submission / Integration | [role guide](docs/agents/integration.AGENTS.md), `src/components/report/`, `src/lib/submission/`          |
-
-Read [architecture](docs/architecture.md) and [API contracts](docs/api.md) before changing shared interfaces. All TypeScript domain types derive from Zod schemas.
-
-## Checks
+## Verify
 
 ```sh
 pnpm check
 pnpm build
-```
-
-With a local server already running:
-
-```sh
+pnpm start
 pnpm test:smoke
 ```
 
-For a different port in Fish:
+`test:smoke` uses two disposable private test accounts and an image fixture, validates real uploads/AI/owner isolation, then removes only its own test records. It never approves a report or opens a government form. Set `STREETWISE_TEST_URL` for another origin. Set `STREETWISE_TEST_CRON=1` to queue directly and validate cloud recovery instead of mutation-triggered execution. `tests/sql/live.sql` is a rollback-only concurrency/state test for a disposable PostgreSQL instance with the schema installed.
 
-```fish
-env STREETWISE_TEST_URL=http://localhost:3100 pnpm test:smoke
-```
+## Team entry points
 
-Smoke checks create one in-memory sample issue and observation. Restart the server to restore seed data. Contract tests cover coordinate validation, separate community/government state, reviewed text, duplicate guards, and safe repeatable preparation.
+Read [AGENTS.md](AGENTS.md), [GOAL.md](GOAL.md), [architecture](docs/architecture.md), [API contracts](docs/api.md), and your [role guide](docs/agents/). [Deployment notes](docs/deployment.md) document authentication, environment, scheduling and remaining portal acceptance limits.
 
-See [validation results and unverified integrations](docs/validation.md) for the setup acceptance record.
+The UI/map, report pipeline, and submission integration remain separate ownership lanes in this single Next.js repository. Use Zod-derived contracts, plain fetch and pnpm. Do not silently substitute demo data when a live service fails.
 
-## What is implemented
-
-- Next.js, React, TypeScript, Tailwind, local shadcn-style Button, optional react-map-gl / Mapbox canvas.
-- Shared schemas, validated fixtures, structured API errors, process-local demo repository.
-- List/details, community observations, sample analysis, report editing, creation, and preparation.
-- Server-only Supabase and AI Gateway configuration factories, explicit unimplemented geo/browser boundaries.
-- Team ownership, environment template, checks, and GitHub CI configuration.
-
-## What remains
-
-Real uploads, AI analysis, verified jurisdiction/duplicate decisions, Supabase persistence/policies, Stagehand/Browserbase automation, auth/abuse controls, government status tracking, and final visual design belong to subsequent team work. Stagehand is selected but intentionally not installed until its adapter is implemented.
-
-The demo repository exists only in one Node process, resets on restart, and is unsuitable for shared serverless persistence. Repeated anonymous observations are allowed. All issues and analysis are fictional; the map token does not make them real.
-
-A local Git repository is initialized on `main`, with no commits or remote configured. No remote GitHub repository, Vercel deployment, or cloud resource is created by this setup.
+No fictional report may be submitted to a government service. Mountain View and Caltrans automated final clicks require explicit approval of a real reviewed report. County Roads final submission currently uses human takeover. Official receipt and status evidence are required before Streetwise shows successful submission or resolution.

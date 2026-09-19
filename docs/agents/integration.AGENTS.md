@@ -15,9 +15,9 @@ Next.js, TypeScript, Zod, Tailwind/shadcn, Stagehand v4 / Browserbase, Supabase 
 ## Contracts
 
 - Keep the review step between analysis and preparation. Reviewed text must be the text subsequently used.
-- The current submit endpoint is demo-only and never opens a browser. Its `prepared` result does not change government submission state.
-- Implement one reliable authority adapter before broadening support. `src/lib/submission/browser.ts` is the deliberate unimplemented boundary.
-- Stagehand is selected but not installed in this skeleton. Add a verified compatible v4 release when implementing the real adapter; never ship a dummy browser action as a live success.
+- Live report APIs live under `/api/reports`; legacy create/analyze/submit paths return 410. Persist report review before portal preparation.
+- Maintain the three authorized portal adapters in `src/lib/submission/browser.ts`; County final submission remains a human takeover step.
+- Stagehand v4 and Browserbase are installed. Never ship a dummy browser action as a live success.
 - Separate form preparation from irreversible final submission. Never send fictional reports to real government services.
 - Unknown authority, uncertain duplicates, and missing evidence must be visible in review before any future live path.
 - Persist actual government receipt IDs only when supported by a real response. Community observations remain independent.
@@ -28,12 +28,8 @@ Coordinate schema changes with the pipeline owner; coordinate map UX changes wit
 
 ## Workflow
 
-Use `feat/submission-flow`. Keep `main` runnable; integrate small PRs early. Run `pnpm check`, `pnpm build`, and `pnpm test:smoke`, then exercise the complete demo flow on desktop and mobile. Real deployments and external submissions require the applicable authorization; they are outside the initial skeleton scope.
+Use `feat/submission-flow`. Keep `main` runnable; integrate small PRs early. Run `pnpm check`, `pnpm build`, and `pnpm test:smoke`, then exercise the complete live flow on desktop and mobile. Deployments and service integration are authorized by GOAL.md; final government sends require approval of the specific real report.
 
-## Next work
+## Current acceptance boundaries
 
-1. Align the final review UX and real analysis contract with teammates.
-2. Inspect one real portal, implement safe form preparation, and expose its Browserbase session for review.
-3. Add submission persistence, retries, and status tracking based on actual receipts.
-4. Configure GitHub/Vercel after the repository and environment are ready.
-5. Stabilize a short end-to-end demo and its fallback behavior.
+The live application is deployed; see `docs/deployment.md`. Real service and isolation checks must use disposable private test data and stop before government submission. Preserve the irreversible-send fence, owner scope, checkpoint recovery, and explicit unsupported-tracking state. Portal login/CAPTCHA and real receipt acceptance require user participation; never report them as tested from a read-only portal probe.

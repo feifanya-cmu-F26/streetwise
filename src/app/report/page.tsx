@@ -1,5 +1,4 @@
-import { ReportFlow } from "@/components/report/report-flow";
-
-export default function ReportPage() {
-  return <ReportFlow />;
+// The persistent AppShell owns this tab. Direct URL entry still uses Next routing.
+export default function Page() {
+  return null;
 }

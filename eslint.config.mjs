@@ -7,6 +7,8 @@ export default defineConfig([
   ...nextTs,
   globalIgnores([
     ".next/**",
+    ".next-preview/**",
+    ".next-integration/**",
     ".pnpm-store/**",
     "out/**",
     "next-env.d.ts",

@@ -11,13 +11,13 @@ const EXTENSION_BY_TYPE: Record<UploadRequest["contentType"], string> = {
   "image/webp": "webp",
 };
 
-// Evidence photos are never analyzed until moved out of `pending/`; the
-// analysis step (Next work #3) is responsible for that promotion.
+// Fixed owner-scoped paths are linked transactionally at report approval.
 export async function createEvidenceUploadUrl(
   input: UploadRequest,
+  ownerId: string,
 ): Promise<UploadResponse> {
   const bucket = requiredServerEnv("SUPABASE_STORAGE_BUCKET");
-  const storagePath = `pending/${randomUUID()}.${EXTENSION_BY_TYPE[input.contentType]}`;
+  const storagePath = `evidence/${ownerId}/${randomUUID()}.${EXTENSION_BY_TYPE[input.contentType]}`;
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase.storage
     .from(bucket)
@@ -33,6 +33,7 @@ export async function createEvidenceUploadUrl(
   // file_size_limit and allowed_mime_types are what actually enforce them.
   const inserted = await supabase.from("evidence").insert({
     storage_path: storagePath,
+    owner_id: ownerId,
     content_type: input.contentType,
     size_bytes: input.sizeBytes,
   });
@@ -67,20 +68,24 @@ export async function signEvidenceReadUrls(
   return signed;
 }
 
-// Moves an accepted photo out of `pending/`, so a sweeper can treat whatever
-// is still there as garbage.
-// Creation trusts a caller-supplied analysis, so the path is an untrusted
-// claim. Only an evidence slot this server issued and nothing has claimed yet
-// may be attached, otherwise a client could point a new issue at someone
-// else's photo. Checked before an issue row exists so a bad path cannot leave
-// a half-created issue behind.
-export async function assertEvidenceAvailable(storagePath: string) {
-  const { data } = await createServerSupabaseClient()
+// Only an unclaimed photo owned by this user can enter live analysis.
+export async function assertEvidenceAvailable(
+  storagePath: string,
+  ownerId?: string,
+) {
+  let query = createServerSupabaseClient()
     .from("evidence")
     .select("storage_path")
     .eq("storage_path", storagePath)
-    .is("issue_id", null)
-    .maybeSingle();
+    .is("issue_id", null);
+  if (ownerId) query = query.eq("owner_id", ownerId);
+  const { data, error } = await query.maybeSingle();
+  if (error)
+    throw new ApiError(
+      502,
+      "EVIDENCE_LOOKUP_FAILED",
+      "Could not check this photo.",
+    );
   if (!data) {
     throw new ApiError(
       400,
@@ -88,29 +93,4 @@ export async function assertEvidenceAvailable(storagePath: string) {
       "This photo was not uploaded for a new report, or is already attached to one.",
     );
   }
-}
-
-export async function promoteEvidence(
-  storagePath: string,
-  issueId: string,
-): Promise<string> {
-  const bucket = requiredServerEnv("SUPABASE_STORAGE_BUCKET");
-  const supabase = createServerSupabaseClient();
-  await assertEvidenceAvailable(storagePath);
-  const promotedPath = `issues/${issueId}/${storagePath.split("/").pop()}`;
-  const { error } = await supabase.storage
-    .from(bucket)
-    .move(storagePath, promotedPath);
-  if (error) {
-    throw new ApiError(
-      502,
-      "EVIDENCE_PROMOTE_FAILED",
-      "Could not attach the uploaded photo to this issue.",
-    );
-  }
-  await supabase
-    .from("evidence")
-    .update({ issue_id: issueId, storage_path: promotedPath })
-    .eq("storage_path", storagePath);
-  return promotedPath;
 }

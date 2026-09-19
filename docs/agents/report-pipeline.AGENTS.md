@@ -15,12 +15,12 @@ Next.js Route Handlers, TypeScript, Zod, Supabase Postgres and Storage, optional
 ## Contracts
 
 - Zod schemas are authoritative. Coordinate breaking changes before touching consumers; update fixtures, tests, and `docs/api.md` together.
-- The existing analyze endpoint is explicitly simulated. Define the real upload/analysis request before connecting Storage or a model; do not pass mock output off as vision analysis.
+- Real upload/analysis runs through owner-scoped `/api/reports` jobs. Legacy `/api/issues/analyze` is retired; do not restore client-supplied analysis as trusted state.
 - Keep `src/lib/report/analyze.ts` as orchestration, not a monolithic Route Handler.
 - Use objective image evidence. Do not invent accident history, dimensions, or jurisdiction facts.
 - Geographic proximity alone is not duplicate proof. Unknown authority becomes `needs_review`.
 - A city address does not prove maintenance responsibility. Use deterministic jurisdiction data where possible.
-- Replace the repository boundary with durable Supabase operations. Community increments must be atomic in the real database.
+- Preserve durable Supabase operations and the atomic observation trigger. Immutable evidence paths are linked during transactional report approval.
 - Validate files, size limits, storage paths, and data exposure before enabling uploads. Keep secret credentials server-only.
 
 ## Boundaries
@@ -31,10 +31,8 @@ Do not redesign map UI or implement browser submission. Do not add an ORM, separ
 
 Use `feat/report-pipeline`. Ship small PRs with stable contracts. Run `pnpm check`, `pnpm build`, and local `pnpm test:smoke`. For real analysis, additionally test representative images and report which services were actually called.
 
-## Next work
+## Current integration
 
-1. ~~Agree real upload and analysis contracts; add a Supabase migration and Storage policies.~~ Done in code and verified against a disposable project; the migration still needs integration-lead review.
-2. ~~Implement persistence and atomic observations behind the repository boundary.~~ Done: Supabase is the only implementation, observations insert and a trigger keeps the counters atomic.
-3. Image analysis, reverse geocoding, and report generation are connected; `mode: "live"` runs the real pipeline. **Authority rules are not**, and cannot be until someone loads official jurisdiction boundary data — a city name or an address does not establish maintenance responsibility, so `resolveAuthority` stays unimplemented and live analysis returns `needs_review` rather than a guess. Obtaining that data is the open task, not writing the resolver.
-4. ~~Add duplicate candidate lookup; use PostGIS if straightforward, otherwise Haversine.~~ Done with a bounding-box prefilter plus Haversine. Candidates are surfaced for review only; `duplicate.isDuplicate` still needs something beyond proximity to set it. Authority resolution remains blocked on real jurisdiction boundary data, which is a data-acquisition task, not a coding one.
-5. Keep optional Jev/weather/traffic outside the critical path.
+The integration lead reviewed the pipeline and applied the base/additive migrations to the user-selected Streetwise Supabase project. Real AI, geocoding and duplicates are exercised through persisted report jobs. Authority resolution queries official Mountain View and County maintained-road layers; conflicting, unavailable or missing evidence remains `needs_review`. User confirmation is still required because nearby road ownership does not prove ownership of every asset.
+
+Keep optional Jev/weather/traffic outside the critical path. See `docs/deployment.md` for verified services and remaining real-portal acceptance limits.

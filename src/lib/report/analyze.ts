@@ -1,4 +1,5 @@
 import "server-only";
+import { resolveAuthority } from "@/lib/geo/resolve-authority";
 import { requireDemoMode } from "@/lib/env";
 import { analyzeDemoIssue } from "@/lib/demo/analyze";
 import { analyzeImage } from "@/lib/ai/analyze-image";
@@ -25,17 +26,20 @@ async function enrich(location: IssueLocation, issueType: IssueType) {
   };
 }
 
-export async function analyzeIssue(input: AnalyzeRequest) {
+export async function analyzeIssue(input: AnalyzeRequest, ownerId?: string) {
   if (input.mode === "demo") {
     requireDemoMode();
     const analysis = analyzeDemoIssue(input);
     // Candidates and the address are real even though the rest is simulated.
-    return { ...analysis, ...(await enrich(input.location, analysis.issueType)) };
+    return {
+      ...analysis,
+      ...(await enrich(input.location, analysis.issueType)),
+    };
   }
 
   // The path is an untrusted claim until this passes, so nothing is analyzed
   // on behalf of a photo the caller does not own.
-  await assertEvidenceAvailable(input.storagePath);
+  await assertEvidenceAvailable(input.storagePath, ownerId);
   const signed = await signEvidenceReadUrls([input.storagePath]);
   const imageUrl = signed.get(input.storagePath);
   if (!imageUrl) {
@@ -60,14 +64,7 @@ export async function analyzeIssue(input: AnalyzeRequest) {
     imageUrl,
     duplicate: { isDuplicate: false, existingIssueId: null, confidence: 0 },
     duplicateCandidates,
-    // Jurisdiction is never inferred from an address or a photo. This stays
-    // unresolved until resolveAuthority has real boundary data to work from.
-    authority: {
-      status: "needs_review",
-      authority: null,
-      reason:
-        "Responsibility has not been verified. Jurisdiction boundary data is not connected yet.",
-    },
+    authority: await resolveAuthority(location),
     generatedReport: {
       title: vision.reportTitle,
       description: vision.reportDescription,
