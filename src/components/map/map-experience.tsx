@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,8 @@ export function MapExperience({ initialIssueId }: { initialIssueId?: string }) {
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const detailPanelRef = useRef<HTMLElement>(null);
+  const revealDetailRef = useRef(false);
   const load = useCallback(
     (signal?: AbortSignal) =>
       apiFetch("/api/issues", issuesResponseSchema, { signal })
@@ -43,6 +45,29 @@ export function MapExperience({ initialIssueId }: { initialIssueId?: string }) {
     return () => controller.abort();
   }, [load]);
   const selected = issues.find((issue) => issue.id === selectedId);
+  const selectIssue = useCallback((id: string) => {
+    revealDetailRef.current = true;
+    setSelectedId(id);
+  }, []);
+  useEffect(() => {
+    if (!selected || !revealDetailRef.current) return;
+    revealDetailRef.current = false;
+    if (!window.matchMedia("(max-width: 1023px)").matches) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const panel = detailPanelRef.current;
+      if (!panel) return;
+      const reduceMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+      panel.scrollIntoView({
+        behavior: reduceMotion ? "auto" : "smooth",
+        block: "start",
+      });
+      panel.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [selected]);
   return (
     <main id="main" className="mx-auto max-w-[1600px] p-5 sm:p-8">
       <div className="mb-7 flex flex-wrap items-end justify-between gap-5">
@@ -64,15 +89,17 @@ export function MapExperience({ initialIssueId }: { initialIssueId?: string }) {
           </Link>
         </Button>
       </div>
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <IssueMap
           issues={issues}
           selectedId={selectedId}
-          onSelect={setSelectedId}
+          onSelect={selectIssue}
         />
         <aside
+          ref={detailPanelRef}
+          tabIndex={selected ? -1 : undefined}
           className="overflow-hidden rounded-xl border border-border bg-white"
-          aria-label="Neighborhood issues"
+          aria-label={selected ? "Issue details" : "Neighborhood issues"}
         >
           {loading ? (
             <p role="status" className="p-6">
@@ -135,7 +162,7 @@ export function MapExperience({ initialIssueId }: { initialIssueId?: string }) {
                     className="border-b border-border last:border-0"
                   >
                     <button
-                      onClick={() => setSelectedId(issue.id)}
+                      onClick={() => selectIssue(issue.id)}
                       className="w-full p-5 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
                     >
                       <span className="flex justify-between gap-4">
